@@ -79,7 +79,6 @@ Certifique-se de ter o **Node.js** instalado em sua máquina.
     ```bash
     npm run dev
     ```
-    *O projeto abrirá localmente, geralmente no endereço [http://localhost:5173](http://localhost:5173).*
 
 3.  **Gerar build de produção:**
     ```bash

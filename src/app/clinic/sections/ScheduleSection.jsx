@@ -1,9 +1,21 @@
 import { useState, useEffect } from "react";
 import { Plus, ChevronLeft, ChevronRight, Trash2 } from "lucide-react";
 import {
-  HOURS, WEEK_DAYS_LABELS, DOCTOR_COLORS, ALL_DOCTORS
+  HOURS, WEEK_DAYS_LABELS, DOCTOR_COLORS
 } from "../data/clinicData";
 import { db } from "../../db";
+
+const PALETTES = [
+  { bg: "#FCE4EC", border: "#F48FB1", text: "#880E4F" }, // Pink
+  { bg: "#E3F2FD", border: "#90CAF9", text: "#0D47A1" }, // Blue
+  { bg: "#F3E5F5", border: "#CE93D8", text: "#4A148C" }, // Purple
+  { bg: "#E0F2F1", border: "#80CBC4", text: "#004D40" }, // Teal
+  { bg: "#FFF3E0", border: "#FFCC80", text: "#E65100" }, // Orange
+  { bg: "#FFF8E1", border: "#FFE082", text: "#F57F17" }, // Amber
+  { bg: "#E8F5E9", border: "#A5D6A7", text: "#1B5E20" }, // Green
+  { bg: "#EDE7F6", border: "#B39DDB", text: "#311B92" }, // Deep Purple
+  { bg: "#E8EAF6", border: "#9FA8DA", text: "#1A237E" }, // Indigo
+];
 
 export function ScheduleSection() {
   const [view, setView] = useState("week");
@@ -12,11 +24,34 @@ export function ScheduleSection() {
   const [selectedEvent, setSelectedEvent] = useState(null);
   const [showAddModal, setShowAddModal] = useState(false);
   const [events, setEvents] = useState([]);
+  const [doctors, setDoctors] = useState([]);
   const [newEvent, setNewEvent] = useState({ doctor: "", patient: "", day: "0", startHour: "8", type: "Presencial" });
 
   useEffect(() => {
     setEvents(db.getEvents());
+    const dbDocs = db.getDoctors();
+    setDoctors(dbDocs);
+    const active = dbDocs.filter(d => d.active);
+    if (active.length > 0) {
+      setNewEvent(prev => ({ ...prev, doctor: active[0].name }));
+    }
   }, []);
+
+  const getDoctorColors = (name) => {
+    if (!name) return { bg: "#F5F5F5", border: "#BDBDBD", text: "#333" };
+    const docKey = name.replace(/^(Dr\.|Dra\.)\s+/, "");
+    if (DOCTOR_COLORS[docKey]) return DOCTOR_COLORS[docKey];
+    
+    const found = doctors.find(d => d.name.replace(/^(Dr\.|Dra\.)\s+/, "") === docKey || d.name === name);
+    if (found && found.color) {
+      const match = PALETTES.find(p => p.bg.toLowerCase() === found.color.toLowerCase());
+      if (match) return match;
+      return { bg: found.color, border: found.color, text: "var(--foreground)" };
+    }
+    return { bg: "#F5F5F5", border: "#BDBDBD", text: "#333" };
+  };
+
+  const normalize = (name) => name ? name.replace(/^(Dr\.|Dra\.)\s+/, "").trim().toLowerCase() : "";
 
   const today = new Date();
   const weekStart = new Date(today);
@@ -29,7 +64,7 @@ export function ScheduleSection() {
   });
 
   const visibleEvents = events.filter(e =>
-    (filterDoctor === "Todos" || e.doctor === filterDoctor) &&
+    (filterDoctor === "Todos" || normalize(e.doctor) === normalize(filterDoctor)) &&
     (view === "week" || e.day === selectedDay)
   );
 
@@ -37,11 +72,15 @@ export function ScheduleSection() {
     visibleEvents.filter(e => e.day === day && e.startHour === hour);
 
   const addEvent = () => {
+    const activeDocs = doctors.filter(d => d.active);
+    const selectedDocName = newEvent.doctor || (activeDocs[0]?.name || "");
+    const selectedDoc = activeDocs.find(d => d.name === selectedDocName);
+
     const ev = {
       id: Date.now(),
-      doctor: newEvent.doctor || ALL_DOCTORS[0],
+      doctor: selectedDocName,
       patient: newEvent.patient || "Novo Paciente",
-      specialty: "Clínico Geral",
+      specialty: selectedDoc ? selectedDoc.specialty : "Clínico Geral",
       day: Number(newEvent.day),
       startHour: Number(newEvent.startHour),
       duration: 1,
@@ -51,7 +90,7 @@ export function ScheduleSection() {
     setEvents(updated);
     db.saveEvents(updated);
     setShowAddModal(false);
-    setNewEvent({ doctor: "", patient: "", day: "0", startHour: "8", type: "Presencial" });
+    setNewEvent({ doctor: activeDocs[0]?.name || "", patient: "", day: "0", startHour: "8", type: "Presencial" });
   };
 
   const removeEvent = (id) => {
@@ -82,7 +121,7 @@ export function ScheduleSection() {
             style={{ fontSize: "0.875rem" }}
           >
             <option>Todos</option>
-            {ALL_DOCTORS.map(d => <option key={d}>{d}</option>)}
+            {doctors.map(d => <option key={d.id} value={d.name}>{d.name}</option>)}
           </select>
           <div className="flex bg-muted rounded-xl p-1">
             {["week", "day"].map(v => (
@@ -106,7 +145,13 @@ export function ScheduleSection() {
             </div>
           )}
           <button
-            onClick={() => setShowAddModal(true)}
+            onClick={() => {
+              const active = doctors.filter(d => d.active);
+              if (active.length > 0) {
+                setNewEvent(prev => ({ ...prev, doctor: active[0].name }));
+              }
+              setShowAddModal(true);
+            }}
             className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-primary text-white hover:opacity-90 transition-all"
             style={{ fontWeight: 700, fontSize: "0.875rem" }}
           >
@@ -149,7 +194,7 @@ export function ScheduleSection() {
                 return (
                   <div key={`cell-${di}-${hour}`} className="border-b border-r border-border relative" style={{ height: 72, padding: "3px 4px" }}>
                     {cellEvents.map(ev => {
-                      const colors = DOCTOR_COLORS[ev.doctor] || { bg: "#F5F5F5", border: "#BDBDBD", text: "#333" };
+                      const colors = getDoctorColors(ev.doctor);
                       return (
                         <button
                           key={ev.id}
@@ -158,7 +203,7 @@ export function ScheduleSection() {
                           style={{ background: colors.bg, borderLeftColor: colors.border }}
                         >
                           <p style={{ fontWeight: 700, fontSize: "0.6875rem", color: colors.text, lineHeight: 1.2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{ev.patient}</p>
-                          <p style={{ fontSize: "0.625rem", color: colors.text, opacity: 0.75, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>Dr(a). {ev.doctor.split(" ")[0]} · {ev.specialty}</p>
+                          <p style={{ fontSize: "0.625rem", color: colors.text, opacity: 0.75, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>Dr(a). {ev.doctor.replace(/^(Dr\.|Dra\.)\s+/, "").split(" ")[0]} · {ev.specialty}</p>
                         </button>
                       );
                     })}
@@ -173,12 +218,12 @@ export function ScheduleSection() {
       {/* Doctor legend */}
       <div className="flex items-center gap-4 px-6 py-3 border-t border-border bg-card flex-shrink-0 overflow-x-auto">
         <span className="text-muted-foreground flex-shrink-0" style={{ fontSize: "0.75rem", fontWeight: 600 }}>Médicos:</span>
-        {ALL_DOCTORS.map(doc => {
-          const colors = DOCTOR_COLORS[doc];
+        {doctors.filter(d => d.active).map(doc => {
+          const colors = getDoctorColors(doc.name);
           return (
-            <div key={doc} className="flex items-center gap-1.5 flex-shrink-0">
+            <div key={doc.id} className="flex items-center gap-1.5 flex-shrink-0">
               <div className="w-3 h-3 rounded-sm border-l-2" style={{ background: colors.bg, borderLeftColor: colors.border }} />
-              <span style={{ fontSize: "0.75rem", color: "var(--muted-foreground)" }}>Dr(a). {doc}</span>
+              <span style={{ fontSize: "0.75rem", color: "var(--muted-foreground)" }}>{doc.name}</span>
             </div>
           );
         })}
@@ -186,7 +231,7 @@ export function ScheduleSection() {
 
       {/* Event detail modal */}
       {selectedEvent && (() => {
-        const colors = DOCTOR_COLORS[selectedEvent.doctor] || { bg: "#F5F5F5", border: "#BDBDBD", text: "#333" };
+        const colors = getDoctorColors(selectedEvent.doctor);
         return (
           <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={() => setSelectedEvent(null)}>
             <div className="bg-card rounded-3xl p-6 w-full max-w-sm shadow-2xl" onClick={e => e.stopPropagation()}>
@@ -203,7 +248,7 @@ export function ScheduleSection() {
                 <button onClick={() => setSelectedEvent(null)} className="w-8 h-8 rounded-xl bg-muted flex items-center justify-center text-muted-foreground hover:bg-border transition-colors">✕</button>
               </div>
               {[
-                { label: "Médico", value: `Dr(a). ${selectedEvent.doctor}` },
+                { label: "Médico", value: `Dr(a). ${selectedEvent.doctor.replace(/^(Dr\.|Dra\.)\s+/, "")}` },
                 { label: "Dia", value: WEEK_DAYS_LABELS[selectedEvent.day] },
                 { label: "Horário", value: `${selectedEvent.startHour.toString().padStart(2, "0")}:00 — ${(selectedEvent.startHour + 1).toString().padStart(2, "0")}:00` },
                 { label: "Tipo", value: selectedEvent.type },
@@ -215,7 +260,7 @@ export function ScheduleSection() {
               ))}
               <button
                 onClick={() => removeEvent(selectedEvent.id)}
-                className="w-full mt-4 py-2.5 rounded-xl border border-destructive/30 text-destructive flex items-center justify-center gap-2 hover:bg-destructive/5 transition-colors"
+                className="w-full mt-4 py-2.5 rounded-xl border border-destructive/30 text-destructive flex items-center justify-center gap-2 hover:bg-destructive/5 transition-colors cursor-pointer"
                 style={{ fontWeight: 600, fontSize: "0.875rem" }}
               >
                 <Trash2 className="w-4 h-4" /> Remover consulta
@@ -234,7 +279,7 @@ export function ScheduleSection() {
               <button onClick={() => setShowAddModal(false)} className="w-8 h-8 rounded-xl bg-muted flex items-center justify-center text-muted-foreground hover:bg-border transition-colors">✕</button>
             </div>
             <div>
-              <label className="block text-foreground mb-1" style={{ fontSize: "0.8125rem", fontWeight: 600 }}>Paciente</label>
+              <label className="block text-foreground mb-1" style={{ fontSize: "0.8125rem", fontWeight: 600 }}>Paciente *</label>
               <input
                 type="text" placeholder="Nome do paciente"
                 value={newEvent.patient}
@@ -246,22 +291,22 @@ export function ScheduleSection() {
             <div>
               <label className="block text-foreground mb-1" style={{ fontSize: "0.8125rem", fontWeight: 600 }}>Médico</label>
               <select value={newEvent.doctor} onChange={e => setNewEvent(prev => ({ ...prev, doctor: e.target.value }))}
-                className="w-full bg-muted border border-border rounded-xl px-4 py-3 outline-none text-foreground" style={{ fontSize: "0.9375rem" }}>
-                {ALL_DOCTORS.map(d => <option key={d}>{d}</option>)}
+                className="w-full bg-muted border border-border rounded-xl px-4 py-3 outline-none text-foreground cursor-pointer" style={{ fontSize: "0.9375rem" }}>
+                {doctors.filter(d => d.active).map(d => <option key={d.id} value={d.name}>{d.name}</option>)}
               </select>
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="block text-foreground mb-1" style={{ fontSize: "0.8125rem", fontWeight: 600 }}>Dia</label>
                 <select value={newEvent.day} onChange={e => setNewEvent(prev => ({ ...prev, day: e.target.value }))}
-                  className="w-full bg-muted border border-border rounded-xl px-4 py-3 outline-none text-foreground" style={{ fontSize: "0.9375rem" }}>
+                  className="w-full bg-muted border border-border rounded-xl px-4 py-3 outline-none text-foreground cursor-pointer" style={{ fontSize: "0.9375rem" }}>
                   {WEEK_DAYS_LABELS.map((d, i) => <option key={d} value={i}>{d}</option>)}
                 </select>
               </div>
               <div>
                 <label className="block text-foreground mb-1" style={{ fontSize: "0.8125rem", fontWeight: 600 }}>Horário</label>
                 <select value={newEvent.startHour} onChange={e => setNewEvent(prev => ({ ...prev, startHour: e.target.value }))}
-                  className="w-full bg-muted border border-border rounded-xl px-4 py-3 outline-none text-foreground" style={{ fontSize: "0.9375rem" }}>
+                  className="w-full bg-muted border border-border rounded-xl px-4 py-3 outline-none text-foreground cursor-pointer" style={{ fontSize: "0.9375rem" }}>
                   {[8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18].map(h => <option key={h} value={h}>{h.toString().padStart(2, "0")}:00</option>)}
                 </select>
               </div>
@@ -271,7 +316,7 @@ export function ScheduleSection() {
               <div className="flex gap-2">
                 {["Presencial", "Telemedicina"].map(t => (
                   <button key={t} onClick={() => setNewEvent(prev => ({ ...prev, type: t }))}
-                    className="flex-1 py-2.5 rounded-xl border transition-all"
+                    className="flex-1 py-2.5 rounded-xl border transition-all cursor-pointer"
                     style={{ border: newEvent.type === t ? "2px solid var(--primary)" : "1px solid var(--border)", background: newEvent.type === t ? "var(--secondary)" : "transparent", color: newEvent.type === t ? "var(--primary)" : "var(--muted-foreground)", fontWeight: 600, fontSize: "0.875rem" }}>
                     {t}
                   </button>
@@ -279,8 +324,8 @@ export function ScheduleSection() {
               </div>
             </div>
             <div className="flex gap-3 pt-2">
-              <button onClick={() => setShowAddModal(false)} className="flex-1 py-3 rounded-xl border border-border text-foreground hover:bg-muted transition-colors" style={{ fontWeight: 600 }}>Cancelar</button>
-              <button onClick={addEvent} className="flex-1 py-3 rounded-xl bg-primary text-white hover:opacity-90 transition-all" style={{ fontWeight: 700 }}>Adicionar</button>
+              <button onClick={() => setShowAddModal(false)} className="flex-1 py-3 rounded-xl border border-border text-foreground hover:bg-muted transition-colors cursor-pointer" style={{ fontWeight: 600 }}>Cancelar</button>
+              <button onClick={addEvent} className="flex-1 py-3 rounded-xl bg-primary text-white hover:opacity-90 transition-all cursor-pointer" style={{ fontWeight: 700 }}>Adicionar</button>
             </div>
           </div>
         </div>

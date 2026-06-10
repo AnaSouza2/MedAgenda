@@ -54,6 +54,12 @@ const DEFAULT_EVENTS = [
   { id: 15, doctor: "Dra. Fernanda Lima", patient: "Eduardo Lima",     specialty: "Dermatologia",    day: 5, startHour: 10, duration: 1, type: "Presencial" },
 ];
 
+const DEFAULT_USERS = [
+  { id: 1, name: "Ana Paula Souza",  email: "ana.paula@saudetotal.com", role: "Secretária",    active: true },
+  { id: 2, name: "Roberto Carvalho", email: "roberto@saudetotal.com",   role: "Administrador", active: true },
+  { id: 3, name: "Juliana Melo",     email: "juliana.m@saudetotal.com", role: "Secretária",    active: false },
+];
+
 export const db = {
   init() {
     if (!localStorage.getItem("medagenda_initialized")) {
@@ -62,6 +68,7 @@ export const db = {
       localStorage.setItem("medagenda_today", JSON.stringify(DEFAULT_TODAY_APPOINTMENTS));
       localStorage.setItem("medagenda_doctors", JSON.stringify(DEFAULT_DOCTORS));
       localStorage.setItem("medagenda_events", JSON.stringify(DEFAULT_EVENTS));
+      localStorage.setItem("medagenda_users", JSON.stringify(DEFAULT_USERS));
       localStorage.setItem("medagenda_initialized", "true");
     }
   },
@@ -149,7 +156,7 @@ export const db = {
     appts = appts.map(a => a.id === id ? { ...a, status: "Cancelada" } : a);
     localStorage.setItem("medagenda_appointments", JSON.stringify(appts));
 
-    // Atualiza na clínica também
+    // @ts-ignore
     let today = this.getTodayAppointments();
     today = today.map(a => (a.doctor === target.doctor && a.time === target.time) ? { ...a, status: "Faltou" } : a);
     localStorage.setItem("medagenda_today", JSON.stringify(today));
@@ -186,5 +193,17 @@ export const db = {
   saveEvents(events) {
     this.init();
     localStorage.setItem("medagenda_events", JSON.stringify(events));
+  },
+
+  // ── Usuários do Sistema ──
+  getUsers() {
+    this.init();
+    const stored = localStorage.getItem("medagenda_users");
+    return stored ? JSON.parse(stored) : DEFAULT_USERS;
+  },
+
+  saveUsers(list) {
+    this.init();
+    localStorage.setItem("medagenda_users", JSON.stringify(list));
   }
 };
